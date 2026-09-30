@@ -28,10 +28,12 @@ class Mastermind:
         return len(raw) == self.length and all(ch in self.symbols for ch in raw)
 
     def submit(self, raw):
-        # No state changes are allowed once the game has ended.
-        if self.is_over():
+        # No state changes once the game has ended, and malformed guesses
+        # are rejected before they can use up a turn.
+        if self.is_over() or not self.is_valid(raw):
             return None
         guess = list(raw)
+        # Feedback is computed exactly once, for this accepted guess only.
         exact, partial = feedback(self.code, guess)
         self.history.append((raw, exact, partial))
         self.turns -= 1
@@ -46,12 +48,28 @@ class Mastermind:
         if not self.is_over():
             self.status = "quit"
 
+    def format_history(self):
+        lines = ["  #  Guess  Exact  Partial"]
+        for i, (raw, exact, partial) in enumerate(self.history, 1):
+            lines.append(f"{i:>3}  {raw:<5}  {exact:>5}  {partial:>7}")
+        return "\n".join(lines)
+
+    @staticmethod
+    def read(prompt):
+        # Returns None if input is closed (Ctrl-D) or interrupted (Ctrl-C).
+        try:
+            return input(prompt).strip()
+        except (EOFError, KeyboardInterrupt):
+            print()
+            return None
+
     def choose_difficulty(self):
         names = "/".join(DIFFICULTIES)
         while True:
-            raw = input(f"Choose difficulty ({names}) > ").strip().lower()
-            if raw == "q":
+            raw = self.read(f"Choose difficulty ({names}) > ")
+            if raw is None or raw.lower() == "q":
                 return None
+            raw = raw.lower()
             if raw in DIFFICULTIES:
                 return raw
             print(f"Enter one of: {names}.")
@@ -60,22 +78,25 @@ class Mastermind:
         choice = self.choose_difficulty()
         if choice is None:
             self.quit()
+            print("Quit. Thanks for playing.")
             return
         # Rebuild the game with the chosen difficulty.
         self.__init__(choice)
         print(f"Mastermind — enter {self.length} digits from "
               f"{self.symbols[0]} to {self.symbols[-1]}.")
         while not self.is_over():
-            raw = input(f"{self.turns} turns left > ").strip()
-            if raw.lower() == "q":
+            raw = self.read(f"{self.turns} turns left > ")
+            if raw is None or raw.lower() == "q":
                 self.quit()
+                print("Quit. Thanks for playing.")
                 return
-            if not self.is_valid(raw):
-                print(f"Enter exactly {self.length} digits from "
+            result = self.submit(raw)
+            if result is None:
+                print(f"Invalid guess (no turn used). Enter exactly "
+                      f"{self.length} digits from "
                       f"{self.symbols[0]} to {self.symbols[-1]}.")
                 continue
-            exact, partial = self.submit(raw)
-            print("Exact:", exact, " Partial:", partial)
+            print(self.format_history())
         if self.status == "won":
             print("Cracked the code!")
         else:
